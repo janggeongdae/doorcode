@@ -199,6 +199,12 @@
   .ad-fields[open] summary{color:var(--text);margin-bottom:12px;}
   .ad-fields .stack{display:flex;flex-direction:column;gap:10px;}
 
+  .img-attach-row{display:flex;gap:8px;}
+  .img-attach-row input{flex:1;min-width:0;}
+  .img-status{display:block;min-height:14px;margin-top:4px;font-size:11px;color:var(--text-faint);}
+  .img-status.ok{color:var(--accent);}
+  .img-status.error{color:var(--danger);}
+
   footer{font-size:11px;color:var(--text-faint);line-height:1.6;}
 </style>
 </head>
@@ -264,8 +270,17 @@
           <label class="field text"><span>광고주 이름</span>
             <input id="adBrandInput" placeholder="예: 브루웍스 커피" maxlength="20">
           </label>
-          <label class="field text"><span>사진 (선택) — 이미지가 올라가 있는 주소를 붙여넣으세요</span>
-            <input id="adImgInput" type="url" placeholder="https://...">
+          <label class="field text"><span>사진 (선택)</span>
+            <div class="img-attach-row">
+              <input id="adImgInput" type="url" placeholder="첨부하면 자동으로 채워져요">
+              <button type="button" class="btn ghost sm" id="adImgAttachBtn">첨부</button>
+            </div>
+            <input type="file" id="adImgFile" accept="image/*" hidden>
+            <span class="img-status" id="adImgStatus"></span>
+          </label>
+          <label class="field text" id="imgKeyField">
+            <span>이미지 호스팅 키 (최초 1회만, 무료) — <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">여기서 발급받기</a></span>
+            <input id="imgbbKeyInput" placeholder="발급받은 키를 여기 붙여넣으면 저장돼요">
           </label>
           <label class="field text"><span>문구</span>
             <input id="adTitleInput" placeholder="예: 신메뉴 콜드브루 20% 할인" maxlength="40">
@@ -280,7 +295,7 @@
             <input id="adCtaInput" placeholder="더 알아보기" maxlength="12">
           </label>
           <p style="margin:0;font-size:11.5px;color:var(--text-faint);line-height:1.6;">
-            사진 주소가 없다면: ① AI로 이미지를 만들고 ② 이 저장소(GitHub)에 "Add file → Upload files"로 올린 뒤 ③ 그 파일 주소를 위에 붙여넣으세요.
+            이미 어딘가에 올려둔 사진이 있다면 "사진" 칸에 그 주소를 바로 붙여넣어도 돼요.
           </p>
         </div>
       </details>
@@ -427,10 +442,57 @@
     var resetBtn = document.getElementById("resetBtn");
     var adBrandInput = document.getElementById("adBrandInput");
     var adImgInput = document.getElementById("adImgInput");
+    var adImgFile = document.getElementById("adImgFile");
+    var adImgAttachBtn = document.getElementById("adImgAttachBtn");
+    var adImgStatus = document.getElementById("adImgStatus");
+    var imgbbKeyInput = document.getElementById("imgbbKeyInput");
     var adTitleInput = document.getElementById("adTitleInput");
     var adDescInput = document.getElementById("adDescInput");
     var adUrlInput = document.getElementById("adUrlInput");
     var adCtaInput = document.getElementById("adCtaInput");
+
+    try{ imgbbKeyInput.value = localStorage.getItem("doorcode.imgbbKey") || ""; }catch(e){}
+    imgbbKeyInput.addEventListener("change", function(){
+      try{ localStorage.setItem("doorcode.imgbbKey", imgbbKeyInput.value.trim()); }catch(e){}
+    });
+
+    function setImgStatus(text, kind){
+      adImgStatus.textContent = text;
+      adImgStatus.className = "img-status" + (kind ? " " + kind : "");
+    }
+
+    adImgAttachBtn.addEventListener("click", function(){
+      var key = imgbbKeyInput.value.trim();
+      if(!key){
+        setImgStatus("위의 이미지 호스팅 키를 먼저 넣어주세요.", "error");
+        imgbbKeyInput.focus();
+        return;
+      }
+      adImgFile.click();
+    });
+
+    adImgFile.addEventListener("change", function(){
+      var file = this.files && this.files[0];
+      this.value = "";
+      if(!file) return;
+      var key = imgbbKeyInput.value.trim();
+      setImgStatus("업로드 중…", "");
+      var fd = new FormData();
+      fd.append("image", file);
+      fetch("https://api.imgbb.com/1/upload?key=" + encodeURIComponent(key), { method: "POST", body: fd })
+        .then(function(res){ return res.json(); })
+        .then(function(data){
+          if(data && data.success && data.data && data.data.url){
+            adImgInput.value = data.data.url;
+            setImgStatus("업로드 완료", "ok");
+          } else {
+            setImgStatus("업로드 실패 — 키를 확인하거나 사진 주소를 직접 입력해주세요.", "error");
+          }
+        })
+        .catch(function(){
+          setImgStatus("업로드 실패 — 사진 주소를 직접 입력해주세요.", "error");
+        });
+    });
 
     form.addEventListener("submit", function(ev){
       ev.preventDefault();
@@ -491,6 +553,7 @@
       placeInput.value = "";
       adBrandInput.value = "";
       adImgInput.value = "";
+      setImgStatus("", "");
       adTitleInput.value = "";
       adDescInput.value = "";
       adUrlInput.value = "";
